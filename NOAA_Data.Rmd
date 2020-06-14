@@ -1,0 +1,106 @@
+```{r, message=FALSE, warning=FALSE}
+library(rnoaa)
+library(tidyverse)
+library(data.table)
+```
+
+```{r, message=FALSE}
+my_token <- "######" # Token generated using my email (dwfletcher215@tamu.edu)
+
+options(noaakey = my_token) # Sets token allowing interaction with the API
+
+current_date <- Sys.Date()
+```
+
+Set up filter conditions. Here, I've filtered on stations that (1) are in Texas and (2) were operational 2010-2020
+
+```{r}
+stations <- isd_stations()  # Retrieves full list of ISD stations 
+
+tx_stations <- stations %>% 
+  filter(state == "TX") %>% 
+  mutate(begin = ymd(begin)) %>% 
+  mutate(end = ymd(end))
+
+tx_stations_active <- tx_stations %>%
+  filter(year(end) == 2020)  %>% # Check for still being active
+  filter(year(begin) <= 2010) # Check for active at the start of timeframe
+```
+
+A heuristic check to see if the filtering worked
+
+```{r, fig.asp=.5}
+#hist(tx_stations_active$begin, breaks = 75)
+```
+
+
+
+```{r}
+test_data <- isd(usaf = tx_stations_active[10,1], wban = tx_stations_active[10,2], year = 2019)
+
+
+new_path <- "where you want data to go"
+
+setwd(new_path)
+test_data_head <- head(test_data)
+save(test_data_head, file="test.Rda")
+```
+
+
+```{r}
+#full_data <- data.frame(matrix(0, ncol = length(active_years),nrow = nrow(tx_stations_active)))
+
+full_data <- replicate(n=197, expr=list())
+names(full_data) <- tx_stations_active$station_name
+```
+
+Creates a vector of important variables to cut down on the size of the data download.
+
+```{r}
+imp_vars <- c("date", "time", "latitude", "longitude", "elevation", "wind_direction", "wind_speed", "temperature", "temperature_dewpoint", "air_pressure", "GD1_coverage_code_1", "MA1_station_pressure_rate", "KA1_period_quantity", "KA1_max_min", "KA1_temp", "OC1_speed_rate", "AA1_precipitation_liquid", "AA1_period_quantity_hrs", "AA1_depth", "AU1_intensity_and_proximity_code", "AU1_descriptor_code", "AU1_precipitation_code", "AU1_obscuration_code", "AU1_other_weather_phenomena_code", "AW1_automated_atmospheric_condition_code", "MW1_manual_atmospheric_condition_code")
+```
+
+Since the NOAA API needs a specific key per call, this loop cannot be vectorized in a meaningful way. 
+
+```{r}
+full_data <- replicate(n=197, expr=list())
+
+for(ii in 1:3){
+  iter = 1
+  for(jj in 1:length(active_years)){ 
+    full_data[[ii]][[iter]] <- 
+      data.table(isd(tx_stations_active[ii, 1],
+          tx_stations_active[ii, 2],
+          year = active_years[jj]))
+    
+    names(full_data) <- 
+      paste(tx_stations_active$station_name[ii], "_", jj)
+    
+    iter = iter + 1
+    }
+}
+```
+
+########################################################################################################################################################################################################################################
+
+An older version of the assignment that's slower than the one above. 
+
+
+```{r}
+new_path <- "where you want the data to go"
+setwd(new_path)
+
+for(ii in 1:197){
+  for(jj in 2010:2020){
+    outStr <- paste(jj, tx_stations_active$station_name[ii],sep = "_")
+    
+    assign(outStr, isd(tx_stations_active[ii, 1],
+          tx_stations_active[ii, 2],
+          year = jj))
+    
+    saveRDS(outStr, file=paste(outStr, ".Rdata", sep=''))
+  }
+}
+
+
+```
